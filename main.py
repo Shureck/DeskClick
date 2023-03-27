@@ -17,7 +17,6 @@ import threading
 import uvicorn
 from pol import MouseTracker
 import wave
-from speechkit import Session, SpeechSynthesis
 
 app = FastAPI()
 
@@ -47,21 +46,32 @@ app.add_middleware(
 polygons_file = 'polygons.json'
 mt = MouseTracker(polygons_file)
 
-oauth_token = "y0_AgAAAAAhwzfrAATuwQAAAADcbw9GsZVig0DqTnObK5XXzXI4UVoZie8"
-catalog_id = "b1gnbu1bvm56hin6jfbd"
+def synthesize(folder_id, iam_token, text):
+    url = 'https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize'
+    headers = {
+        'Authorization': 'Bearer ' + iam_token,
+    }
 
-# Экземпляр класса `Session` можно получать из разных данных 
-session = Session.from_yandex_passport_oauth_token(oauth_token, catalog_id)
+    data = {
+        'text': text,
+        'lang': 'ru-RU',
+        'voice': 'filipp',
+        'folderId': folder_id,
+        'format': 'mp3',
+        'sampleRateHertz': 48000,
+    }
+
+    with requests.post(url, headers=headers, data=data, stream=True) as resp:
+        if resp.status_code != 200:
+            raise RuntimeError("Invalid response received: code: %d, message: %s" % (resp.status_code, resp.text))
+
+        for chunk in resp.iter_content(chunk_size=None):
+            yield chunk
+
 
 @app.on_event("startup")
 async def startup_event():
     global mt
-
-    synthesizeAudio = SpeechSynthesis(session)
-    synthesizeAudio.synthesize(
-        'out.wav', text='Привет мир!',
-        voice='oksana', format='lpcm', sampleRateHertz='16000'
-    )
 
     thread = threading.Thread(target = mt.get_mouse)
     thread.start()
